@@ -1,0 +1,58 @@
+services:
+  {{ServicePrefix}}-apphost:
+    build:
+      context: .
+      dockerfile: {{SolutionName}}.AppHost/Dockerfile
+      secrets:
+        - atom_pkg_access_token
+    container_name: {{ServicePrefix}}-apphost
+    ports:
+      - "{{DashboardPort}}:{{DashboardPort}}"    # Aspire dashboard UI
+      - "{{OtlpGrpcPort}}:{{OtlpGrpcPort}}"      # OTLP/gRPC ingest
+      - "{{OtlpHttpPort}}:{{OtlpHttpPort}}"      # OTLP/HTTP ingest
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      DOTNET_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:{{DashboardPort}}
+      ASPIRE_ALLOW_UNSECURED_TRANSPORT: "true"
+      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://0.0.0.0:{{OtlpGrpcPort}}
+      ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL: http://0.0.0.0:{{OtlpHttpPort}}
+      AppHost__Mode: dashboard
+    restart: unless-stopped
+
+  {{ServicePrefix}}-api:
+    build:
+      context: .                          # Root, so all projects are in scope
+      dockerfile: {{SolutionName}}.WebApi/Dockerfile
+      secrets:
+        - atom_pkg_access_token
+    container_name: {{ServicePrefix}}-api
+    ports:
+      - "{{ApiHostPort}}:{{ApiContainerPort}}"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://{{ServicePrefix}}-apphost:{{OtlpGrpcPort}}
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    volumes:
+      - {{DataVolumePath}}:/app/Data      # Persist SQLite database
+      - {{LogsVolumePath}}:/app/Logs      # Persist API error logs
+    depends_on:
+      - {{ServicePrefix}}-apphost
+    restart: unless-stopped
+
+  {{ServicePrefix}}-web:
+    build:
+      context: ./{{SolutionName}}.Web
+      dockerfile: Dockerfile
+      secrets:
+        - atom_pkg_access_token
+    container_name: {{ServicePrefix}}-web
+    ports:
+      - "{{WebHostPort}}:{{WebContainerPort}}"
+    depends_on:
+      - {{ServicePrefix}}-api
+    restart: unless-stopped
+
+secrets:
+  atom_pkg_access_token:
+    environment: ATOM_PKG_ACCESS_TOKEN

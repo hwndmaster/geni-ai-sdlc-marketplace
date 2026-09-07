@@ -1,0 +1,11 @@
+{
+  "name": "atom-devops",
+  "version": "0.1.0",
+  "description": "The build, publish and CI plumbing every Genius/Atom app repo shares, kept as versioned templates instead of copies. sync-toolchain renders them into a repo and reports drift; docker-publish drives the ghcr.io publish and package-cleanup flow.",
+  "author": {
+    "name": "Dima Kravtsov",
+    "url": "https://github.com/hwndmaster"
+  },
+  "homepage": "https://github.com/hwndmaster/geni-ai-sdlc-marketplace",
+  "license": "MIT"
+}

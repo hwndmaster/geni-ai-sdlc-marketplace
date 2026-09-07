@@ -1,0 +1,30 @@
+### Windows
+Thumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+### macOS
+.DS_Store
+._*
+
+### Linux
+*~
+.directory
+.Trash-*
+
+### Editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.history/
+*.vsix
+
+### Node
+node_modules/
+*.log
+
+### Python
+__pycache__/
+*.py[cod]
+*.pyo
