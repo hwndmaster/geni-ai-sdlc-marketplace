@@ -27,12 +27,11 @@ Templates live in `${CLAUDE_PLUGIN_ROOT}/skills/sync-toolchain/references/templa
 | `ci.yml` | `.github/workflows/ci.yml` | `SolutionName` |
 | `CodeCoverage.runsettings` | `CodeCoverage.runsettings` | `SolutionName`, test-project list |
 | `docker-compose.yml` | `docker-compose.yml` | **new repos only** — see below |
-| `deployment-update.ps1` | `Deployment/update.ps1` | `ServicePrefix` |
-| `deployment-env.example` | `Deployment/.env.example` | `EnvPrefix`, ports |
-| `deployment-README.md` | `Deployment/README.md` | `SolutionName`, `ServicePrefix`, `EnvPrefix`, ports |
-| `apphost-DeploymentSettings.cs` | `<SolutionName>.AppHost/DeploymentSettings.cs` | `SolutionName`, `ServicePrefix`, ports |
-| `deployment-docker-compose.yml` | `Deployment/docker-compose.yml` | **new repos only** — see below |
-| `apphost-Program.cs` | `<SolutionName>.AppHost/Program.cs` | **new repos only** — see below |
+| `deployment-update.ps1` | `Deployment/update.ps1` | `SolutionName`, `ServicePrefix` |
+| `deployment-docker-compose.yml` | `Deployment/docker-compose.yml` | `SolutionName`, `ServicePrefix`, `EnvPrefix` |
+| `deployment-README.md` | `Deployment/README.md` | `SolutionName`, `ServicePrefix` |
+| `deployment-app.json` | `Deployment/app.json` | **new repos only** — see below |
+| `deployment-env.example` | `Deployment/.env.example` | **new repos only** — see below |
 
 Anything else in the repo is not managed here. In particular `.vscode/`, `Directory.Build.props`,
 `Directory.Packages.props` and the `Dockerfile`s are each repo's own.
@@ -110,42 +109,43 @@ Read and write bytes, or decode and re-encode without normalising. Do not pipe a
 
 ### The deployment stack
 
-`Deployment/` runs the published images on a server with a working Aspire **Resources** page: compose
-starts only the app host, whose DCP orchestrator then creates the api and web containers itself over a
-bind-mounted Docker socket. `Deployment/README.md` carries the reasoning and the trade-offs; it is
-rendered from the template, so fixes to that explanation belong in the template.
+The apps have no Aspire app host of their own. On the server, one shared app host
+([hwndmaster/app-host](https://github.com/hwndmaster/app-host)) runs every app, from a folder per app
+under its apps root (`C:\Docker` on the server, which also holds unrelated containers' folders).
+`Deployment/` is that folder: it is copied to `C:\Docker\<SolutionName>` on the server, next to the app's
+`Data` and `Logs`, and registered in the app host's `apps.json`. Locally, the app host repository's
+`sync-apps.ps1` copies it into the app host's `build\` folder, laid out the same way.
 
-Four of these files are fully managed and re-synced like any other. Two are bootstrap-only, for the
-same reason the dev `docker-compose.yml` is:
+- **`Deployment/app.json`** tells the app host how to run the app: type `atom-webapp`, ports, mounts,
+  memory limits. Its `${NAME}` values come from the app's `.env`.
+- **`Deployment/docker-compose.yml`** only names the two images, under the `pull` profile, so
+  `update.ps1` can pull them with the server's registry login. It starts nothing.
+- **`Deployment/update.ps1`** pulls, stops the app host, removes this app's two containers and starts
+  the app host, which recreates them. It shares the machine-wide mutex `Global\AppHostUpdate` with the
+  app host's own update script.
 
-- **`Deployment/docker-compose.yml`** — ports, volume mounts and per-app environment are app-specific.
-- **`<SolutionName>.AppHost/Program.cs`** — the *resource graph* is app-specific once an app needs more
-  than an api and a web container. One app publishes HTTPS with mounted certs, so its web resource
-  carries an extra port and volume that no token can express.
+Three of these files are fully managed and re-synced like any other. Two are bootstrap-only, for the same
+reason the dev `docker-compose.yml` is:
 
-Render both only when absent, and treat them as a starting point.
+- **`Deployment/app.json`**: ports, mounts and environment are app-specific. One app publishes HTTPS with
+  mounted certs and passes integration secrets, which no token can express.
+- **`Deployment/.env.example`**: it documents exactly those app-specific variables.
 
-Note that `<SolutionName>.AppHost/Dockerfile` is **not** managed here — Dockerfiles stay each repo's
-own — but the deployed mode requires one line in it, and a repo without it fails at run time with a
-container-runtime error rather than at build time:
-
-```dockerfile
-COPY --from=docker:28-cli /usr/local/bin/docker /usr/local/bin/docker
-```
-
-DCP probes for the CLI to detect the container runtime. Check for it whenever `Deployment/` is synced.
+Render both only when absent, and treat them as a starting point. The app host repository's
+`Deployment/app.schema.json` describes every field of `app.json`.
 
 ### `docker-compose.yml` is bootstrap-only
 
 Never overwrite an existing `docker-compose.yml`. Ports, volume mounts and per-app environment are
 genuinely app-specific — one app publishes HTTPS with mounted certs, another injects notification
 credentials. Render it only when the file is absent, and then treat it as a starting point: it carries
-extra tokens (`DashboardPort`, `OtlpGrpcPort`, `OtlpHttpPort`, `ApiHostPort`, `ApiContainerPort`,
-`WebHostPort`, `WebContainerPort`, `DataVolumePath`, `LogsVolumePath`) that have no repo-derivable
-answer, so ask for each.
+extra tokens (`ApiHostPort`, `ApiContainerPort`, `WebHostPort`, `WebContainerPort`, `DataVolumePath`,
+`LogsVolumePath`) that have no repo-derivable answer, so ask for each. `deployment-app.json` and
+`deployment-env.example` use the four port tokens too.
 
 ## Bootstrapping a new app repo
 
-Same flow, except everything is *missing* rather than *drifted*. Render all fifteen templates, ask for
-the compose ports and volume paths, and afterwards remind the user that the repo still needs its own
-`CLAUDE.md` — the `atom-backend` and `atom-frontend` skills read the solution map from it.
+Same flow, except everything is *missing* rather than *drifted*. Render all fourteen templates, ask for
+the ports and volume paths, and afterwards remind the user of two things. The repo still needs its own
+`CLAUDE.md`, because the `atom-backend` and `atom-frontend` skills read the solution map from it. And the
+app only reaches the server once its `Deployment/` folder is registered in the app host's `apps.json`.

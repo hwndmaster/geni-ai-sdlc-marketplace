@@ -1,6 +1,6 @@
 {
   "name": "atom-backend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Test conventions and commands for .NET solutions built on the Genius.Atom framework — xUnit v3, AutoFixture + FakeItEasy, Atom TestingUtil, EF Core repository and schema tests, and WebApplicationFactory integration tests over in-memory SQLite.",
   "author": {
     "name": "Dima Kravtsov",

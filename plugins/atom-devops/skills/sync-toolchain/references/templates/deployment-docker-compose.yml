@@ -1,111 +1,19 @@
-# {{SolutionName}} server deployment.
+# {{SolutionName}}'s images, for pulling only.
 #
-# Unlike the repo-root docker-compose.yml (which BUILDS the images for local work), this file runs the
-# published images on a server, and it starts exactly ONE service: the Aspire app host. The app host's
-# DCP orchestrator then creates the api and web containers itself on the same Docker daemon, which is
-# what populates the dashboard's Resources page with startable/stoppable resources — a dashboard-only
-# app host has no resource model and shows that page empty.
+# update.ps1 pulls them with this file, on the server and so with the server's registry login. The app host
+# cannot pull a private image itself: it runs the docker CLI inside its own container, where that login
+# does not exist. This file starts nothing. The app host creates the containers from app.json, and both
+# services sit under the "pull" profile, so `docker compose up` here does nothing.
 #
-# Run from this directory:
-#   docker compose --env-file .env up -d
-#
-# The project name is fixed so container and network names are predictable across restarts.
-name: {{ServicePrefix}}
+# The project name differs from the label the app host puts on the containers ({{ServicePrefix}}), so this
+# file can never take them for its own.
+name: {{ServicePrefix}}-images
 
 services:
-  {{ServicePrefix}}-apphost:
-    image: ghcr.io/hwndmaster/{{ServicePrefix}}-apphost:${{{EnvPrefix}}_IMAGE_TAG:-latest}
-    container_name: {{ServicePrefix}}-apphost
-    ports:
-      - "{{DashboardPort}}:{{DashboardPort}}"                       # Aspire dashboard UI
-      - "{{OtlpGrpcPort}}:{{OtlpGrpcPort}}"                       # OTLP/gRPC ingest
-      - "{{OtlpHttpPort}}:{{OtlpHttpPort}}"                       # OTLP/HTTP ingest (the SPA's traces and logs, via nginx)
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      DOTNET_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:{{DashboardPort}}
-      ASPIRE_ALLOW_UNSECURED_TRANSPORT: "true"
-      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://0.0.0.0:{{OtlpGrpcPort}}
-      ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL: http://0.0.0.0:{{OtlpHttpPort}}
-
-      # deployed = DCP owns the containers (full Resources page).
-      # external = compose owns them and the app host only reports them; switch to this, remove the
-      #            docker.sock mount below and uncomment the api/web services if DCP cannot drive the
-      #            container runtime on this host. No rebuild needed, it is only configuration.
-      AppHost__Mode: deployed
-
-      # Must match the `name:` above. Docker Desktop groups containers by the compose project label, and
-      # the app host stamps this one onto the containers it creates so the whole stack shows up as a
-      # single project instead of the app host and its containers appearing as two unrelated ones.
-      Deployment__ComposeProject: {{ServicePrefix}}
-      Deployment__Registry: ${{{EnvPrefix}}_REGISTRY:-ghcr.io/hwndmaster}
-      Deployment__ImageTag: ${{{EnvPrefix}}_IMAGE_TAG:-latest}
-      # nginx in the web container proxies /otlp/ back to this app host. DCP owns the network its
-      # containers sit on and this app host is not on it, so that hop goes over the host gateway to the
-      # OTLP/HTTP port published below. /api/ needs no override: both managed containers share DCP's
-      # network and resolve each other by name.
-      Deployment__WebOtlpUpstream: ${{{EnvPrefix}}_OTLP_UPSTREAM:-http://host.docker.internal:{{OtlpHttpPort}}}
-      # Always keeps the deployment current, but the daemon must be logged in to the registry when the
-      # app host creates the containers. Missing reuses images already on the host (offline / local test).
-      Deployment__ImagePullPolicy: ${{{EnvPrefix}}_IMAGE_PULL_POLICY:-Always}
-      # DCP publishes its own endpoints on 127.0.0.1 with no way to override it, so the app host adds a
-      # second, reachable publish at this address. 127.0.0.1 here makes the app local-only.
-      Deployment__BindAddress: ${{{EnvPrefix}}_BIND_ADDRESS:-0.0.0.0}
-      Deployment__ApiPort: "${{{EnvPrefix}}_API_PORT:-{{ApiHostPort}}}"
-      Deployment__WebPort: "${{{EnvPrefix}}_WEB_PORT:-{{WebHostPort}}}"
-
-      # IMPORTANT: these are paths on the DOCKER HOST, not inside this container. The app host asks the
-      # host's daemon to create the api container, and the daemon resolves bind mounts against its own
-      # filesystem. Pointing them at a path that only exists inside this container silently gives the
-      # API an empty database.
-      Deployment__DataPath: ${{{EnvPrefix}}_DATA_PATH:?{{EnvPrefix}}_DATA_PATH must be set (see .env.example)}
-      Deployment__LogsPath: ${{{EnvPrefix}}_LOGS_PATH:?{{EnvPrefix}}_LOGS_PATH must be set (see .env.example)}
-
-      # The dashboard requires a login token by default; it is printed in this container's logs
-      # (docker logs {{ServicePrefix}}-apphost). Set to "true" only on a trusted network — it makes the
-      # dashboard, and every log line and trace in it, readable by anyone who can reach port {{DashboardPort}}.
-      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "${{{EnvPrefix}}_DASHBOARD_ANONYMOUS:-false}"
-    volumes:
-      # Docker-out-of-docker: lets DCP create sibling containers on the host daemon. This grants this
-      # container root-equivalent control of that daemon — acceptable on a single-tenant host running
-      # only images you build, not on anything shared or internet-exposed.
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
-
-  # ── The images DCP manages ─────────────────────────────────────────────────────────────────────
-  # Under the "pull" profile, so `up` never starts them — DCP owns them in deployed mode — while
-  # `--profile pull pull` still fetches them.
-  #
-  # That indirection exists because registry credentials are CLIENT-side (~/.docker/config.json, here
-  # behind Docker Desktop's credential helper), not daemon-side. DCP runs the docker CLI inside the app
-  # host container, which has neither, so a pull from in there is anonymous and fails against a private
-  # registry with "error from registry: unauthorized". Pulling from the host uses the login you already
-  # have; the app host then finds the images present and starts them.
-  #
-  # These are also the full definitions for AppHost__Mode=external: delete the two `profiles:` lines and
-  # compose owns the containers again (then drop the docker.sock mount above and set the mode).
   {{ServicePrefix}}-api:
     profiles: ["pull"]
-    image: ghcr.io/hwndmaster/{{ServicePrefix}}-api:${{{EnvPrefix}}_IMAGE_TAG:-latest}
-    container_name: {{ServicePrefix}}-api
-    ports:
-      - "${{{EnvPrefix}}_API_PORT:-{{ApiHostPort}}}:{{ApiContainerPort}}"
-    environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://{{ServicePrefix}}-apphost:{{OtlpGrpcPort}}
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_EXPORTER_OTLP_INSECURE: "true"
-      OTEL_SERVICE_NAME: {{ServicePrefix}}-api
-    volumes:
-      - ${{{EnvPrefix}}_DATA_PATH}:/app/Data
-      - ${{{EnvPrefix}}_LOGS_PATH}:/app/Logs
-    restart: unless-stopped
+    image: ${{{EnvPrefix}}_REGISTRY:-ghcr.io/hwndmaster}/{{ServicePrefix}}-api:${{{EnvPrefix}}_IMAGE_TAG:-latest}
 
   {{ServicePrefix}}-web:
     profiles: ["pull"]
-    image: ghcr.io/hwndmaster/{{ServicePrefix}}-web:${{{EnvPrefix}}_IMAGE_TAG:-latest}
-    container_name: {{ServicePrefix}}-web
-    ports:
-      - "${{{EnvPrefix}}_WEB_PORT:-{{WebHostPort}}}:{{WebContainerPort}}"
-    depends_on:
-      - {{ServicePrefix}}-api
-    restart: unless-stopped
+    image: ${{{EnvPrefix}}_REGISTRY:-ghcr.io/hwndmaster}/{{ServicePrefix}}-web:${{{EnvPrefix}}_IMAGE_TAG:-latest}

@@ -1,25 +1,6 @@
+# Builds the images (publish-docker.ps1) and can run them locally. On the server the shared app host runs
+# them instead, from Deployment/app.json.
 services:
-  {{ServicePrefix}}-apphost:
-    build:
-      context: .
-      dockerfile: {{SolutionName}}.AppHost/Dockerfile
-      secrets:
-        - atom_pkg_access_token
-    container_name: {{ServicePrefix}}-apphost
-    ports:
-      - "{{DashboardPort}}:{{DashboardPort}}"    # Aspire dashboard UI
-      - "{{OtlpGrpcPort}}:{{OtlpGrpcPort}}"      # OTLP/gRPC ingest
-      - "{{OtlpHttpPort}}:{{OtlpHttpPort}}"      # OTLP/HTTP ingest
-    environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      DOTNET_ENVIRONMENT: Production
-      ASPNETCORE_URLS: http://+:{{DashboardPort}}
-      ASPIRE_ALLOW_UNSECURED_TRANSPORT: "true"
-      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://0.0.0.0:{{OtlpGrpcPort}}
-      ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL: http://0.0.0.0:{{OtlpHttpPort}}
-      AppHost__Mode: dashboard
-    restart: unless-stopped
-
   {{ServicePrefix}}-api:
     build:
       context: .                          # Root, so all projects are in scope
@@ -30,14 +11,17 @@ services:
     ports:
       - "{{ApiHostPort}}:{{ApiContainerPort}}"
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://{{ServicePrefix}}-apphost:{{OtlpGrpcPort}}
+      # The shared app host's OTLP port, when one runs on this machine. Without it the exporter drops the
+      # telemetry and the API runs as usual.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:21100
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_SERVICE_NAME: {{ServicePrefix}}-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Docker Desktop resolves it by itself; a Linux daemon does not
     volumes:
       - {{DataVolumePath}}:/app/Data      # Persist SQLite database
       - {{LogsVolumePath}}:/app/Logs      # Persist API error logs
-    depends_on:
-      - {{ServicePrefix}}-apphost
     restart: unless-stopped
 
   {{ServicePrefix}}-web:

@@ -1,6 +1,6 @@
 {
   "name": "atom-frontend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Conventions for React SPAs built on the private @hwndmaster/atom-* packages — Redux Toolkit + redux-saga slice layout, PrimeReact, Vite, Vitest with SagaRunner and fakeAxios, NSwag-generated API clients, and the ESLint import boundaries that keep UI out of api/.",
   "author": {
     "name": "Dima Kravtsov",

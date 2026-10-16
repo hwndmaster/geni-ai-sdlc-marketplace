@@ -10,8 +10,8 @@ Conventions for React SPAs built on the private **`@hwndmaster/atom-*`** package
 
 ## What it covers
 
-- **pnpm policy** and the `packageManager` pin, plus the command set (`start`, `start:aspire`,
-  `build`, `lint`, `test`, `test:coverage`, `nswag`) and the lint-and-test-before-done rule.
+- **pnpm policy** and the `packageManager` pin, plus the command set (`start`, `build`, `lint`,
+  `test`, `test:coverage`, `nswag`) and the lint-and-test-before-done rule.
 - **`src/` layout** — what `api/`, `store/`, `components/`, `pages/`, `models/`, `schemas/`,
   `shared/`, `styles/`, `telemetry/` and the `primereact.ts` barrel each hold.
 - **Routing on `react-router` v8** — `createBrowserRouter` from `react-router`, `RouterProvider` from

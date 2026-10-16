@@ -26,7 +26,6 @@ folder, not the repo root.
 |------|---------|
 | Install deps | `pnpm install` |
 | Dev server | `pnpm start` (port and `--open` are in the `start` script) |
-| Dev server (Aspire) | `pnpm start:aspire` (no port flag — Aspire assigns it) |
 | Build | `pnpm build` |
 | Lint | `pnpm lint` (eslint, cached) |
 | Test | `pnpm test` |

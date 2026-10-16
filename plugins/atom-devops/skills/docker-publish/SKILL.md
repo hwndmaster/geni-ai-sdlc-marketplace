@@ -34,17 +34,18 @@ Useful parameters: `-DockerUser` (default `hwndmaster`), `-Registry` (default `g
 What it does, as discrete steps that abort the run on the first non-zero exit:
 
 1. logs in to the registry;
-2. builds the three compose services — **apphost, api, web, in that order**, with
-   `COMPOSE_PARALLEL_LIMIT=1` so the private-package restore is not hammered concurrently;
+2. builds the two compose services — **api, then web**, with `COMPOSE_PARALLEL_LIMIT=1` so the
+   private-package restore is not hammered concurrently;
 3. tags each built image (`<compose-project>-<service>`) as
    `<registry>/<user>/<service>:latest`;
-4. pushes all three.
+4. pushes both.
 
 It restores any previous `ATOM_PKG_ACCESS_TOKEN` and `COMPOSE_PARALLEL_LIMIT` in a `finally` block, so
 an interrupted run does not leave the environment mutated.
 
-**All three images are published**, apphost included — the Aspire dashboard is part of the deployed
-set, not a dev-only artefact.
+The apps publish no app host image. On the server one shared app host
+([hwndmaster/app-host](https://github.com/hwndmaster/app-host), with its own publish script) runs every
+app; after publishing, the app's `Deployment/update.ps1` on the server pulls the new images.
 
 ## Clean up old versions
 

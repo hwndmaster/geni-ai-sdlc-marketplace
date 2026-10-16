@@ -1,35 +1,27 @@
-# Copy to Deployment/.env and fill in, then: docker compose --env-file .env up -d
-# (Deployment/.env is gitignored by the root .gitignore's ".env" rule.)
-
-# ── Required ──────────────────────────────────────────────────────────────────────────────────
-# Paths on the DOCKER HOST for the SQLite database and the API's log files.
+# Copy to .env next to app.json and fill in. Server-specific, so never committed (the root .gitignore's
+# ".env" rule covers it).
 #
-# These are handed to the host's Docker daemon when it creates the api container, so they are resolved
-# against the HOST filesystem — not against anything inside the app host container. On Docker Desktop
-# for Windows use a forward-slash Windows path; on a Linux host use an absolute Linux path.
-{{EnvPrefix}}_DATA_PATH=C:/{{SolutionName}}/Data
-{{EnvPrefix}}_LOGS_PATH=C:/{{SolutionName}}/Logs
+# Read twice: by the app host, for the ${NAME} values in app.json, and by update.ps1, to pull the same
+# image tag the app host will run.
 
-# ── Optional ──────────────────────────────────────────────────────────────────────────────────
-# Image coordinates. Images are pulled from the HOST (docker compose --profile pull pull), so it is your
-# own docker login that is used:  echo <ghp_token> | docker login ghcr.io -u hwndmaster --password-stdin
+# ── Required ──────────────────────────────────────────────────────────────────────────────────────
+# Paths on the server for the SQLite database and the API's log files, by default inside this folder
+# (C:\Docker\{{SolutionName}}). The server's Docker daemon resolves them, so on Docker Desktop for Windows use
+# a forward-slash Windows path; on Linux an absolute path.
+{{EnvPrefix}}_DATA_PATH=C:/Docker/{{SolutionName}}/Data
+{{EnvPrefix}}_LOGS_PATH=C:/Docker/{{SolutionName}}/Logs
+
+# ── Optional ──────────────────────────────────────────────────────────────────────────────────────
+# Image coordinates. update.ps1 pulls with this server's own registry login:
+#   echo <token with read:packages> | docker login ghcr.io -u hwndmaster --password-stdin
 #{{EnvPrefix}}_REGISTRY=ghcr.io/hwndmaster
 #{{EnvPrefix}}_IMAGE_TAG=latest
-
-# Leave at Missing. Always makes the app host pull for itself, and it cannot: it runs the docker CLI
-# inside a container, where your registry login does not exist, so pulls come out anonymous and a
-# private registry answers "error from registry: unauthorized".
-#{{EnvPrefix}}_IMAGE_PULL_POLICY=Missing
-
-# Address the reachable port publish binds to. 127.0.0.1 makes the app local-only.
-#{{EnvPrefix}}_BIND_ADDRESS=0.0.0.0
 
 # Host ports for the API and the SPA.
 #{{EnvPrefix}}_API_PORT={{ApiHostPort}}
 #{{EnvPrefix}}_WEB_PORT={{WebHostPort}}
 
-# Dashboard authentication. Left unset, the dashboard demands a login token which is printed in the app
-# host's own logs:  docker logs {{ServicePrefix}}-apphost
-# Setting this to true removes that check, exposing every log line, trace and environment variable in
-# the dashboard to anyone who can reach port {{DashboardPort}}. Only for a trusted network.
-#{{EnvPrefix}}_DASHBOARD_ANONYMOUS=false
+# Memory limits, in docker's notation (384m, 1g). Raise one if its container keeps restarting and
+# `docker inspect` reports it OOMKilled. A change applies on the next .\update.ps1 -SkipPull.
+#{{EnvPrefix}}_API_MEMORY_LIMIT=384m
+#{{EnvPrefix}}_WEB_MEMORY_LIMIT=64m

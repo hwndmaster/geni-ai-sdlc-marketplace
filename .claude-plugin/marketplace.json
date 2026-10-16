@@ -12,7 +12,7 @@
     {
       "name": "atom-backend",
       "source": "./plugins/atom-backend",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Test conventions and commands for .NET solutions built on the Genius.Atom framework — xUnit v3, AutoFixture + FakeItEasy, Atom TestingUtil (FakeDateTime, FakeLogger, BaseRepositoryTests), EF Core repository tests, migrate-on-startup schema guards, and WebApplicationFactory integration tests over in-memory SQLite. Reads the app's own solution map from its CLAUDE.md.",
       "author": {
         "name": "Dima Kravtsov",
@@ -25,7 +25,7 @@
     {
       "name": "atom-frontend",
       "source": "./plugins/atom-frontend",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Conventions for React SPAs built on the private @hwndmaster/atom-* packages — Redux Toolkit + redux-saga slice layout, PrimeReact, Vite, Vitest with SagaRunner and fakeAxios, NSwag-generated API clients, and the ESLint import boundaries that keep UI out of api/. Reads the app's own slice inventory and ports from its CLAUDE.md.",
       "author": {
         "name": "Dima Kravtsov",
@@ -38,7 +38,7 @@
     {
       "name": "atom-devops",
       "source": "./plugins/atom-devops",
-      "version": "0.1.0",
+      "version": "0.3.0",
       "description": "The build, publish and CI plumbing every Genius/Atom app repo shares, kept as versioned templates instead of copies. sync-toolchain renders them into a repo and reports drift; docker-publish drives the ghcr.io publish and package-cleanup flow.",
       "author": {
         "name": "Dima Kravtsov",

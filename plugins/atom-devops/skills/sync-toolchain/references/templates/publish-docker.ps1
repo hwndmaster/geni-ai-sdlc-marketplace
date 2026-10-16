@@ -105,7 +105,6 @@ Ensure-DockerReady
 
 $apiImage = "$Registry/$DockerUser/{{ServicePrefix}}-api:latest"
 $webImage = "$Registry/$DockerUser/{{ServicePrefix}}-web:latest"
-$appHostImage = "$Registry/$DockerUser/{{ServicePrefix}}-apphost:latest"
 $previousAtomPkgAccessToken = $env:ATOM_PKG_ACCESS_TOKEN
 $hadPreviousAtomPkgAccessToken = $null -ne $previousAtomPkgAccessToken
 $previousComposeParallelLimit = $env:COMPOSE_PARALLEL_LIMIT
@@ -120,7 +119,6 @@ try {
     }
 
     Invoke-Step "Build Docker compose images" {
-        docker compose --progress=plain build {{ServicePrefix}}-apphost
         docker compose --progress=plain build {{ServicePrefix}}-api
         docker compose --progress=plain build {{ServicePrefix}}-web
     }
@@ -133,20 +131,12 @@ try {
         docker tag {{ComposeProject}}-{{ServicePrefix}}-web $webImage
     }
 
-    Invoke-Step "Tag AppHost image" {
-        docker tag {{ComposeProject}}-{{ServicePrefix}}-apphost $appHostImage
-    }
-
     Invoke-Step "Push API image" {
         docker push $apiImage
     }
 
     Invoke-Step "Push Web image" {
         docker push $webImage
-    }
-
-    Invoke-Step "Push AppHost image" {
-        docker push $appHostImage
     }
 
     Write-Host ""

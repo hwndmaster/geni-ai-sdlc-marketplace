@@ -43,12 +43,13 @@ Three consequences:
 - **The solution builds against your local Atom checkout whenever it exists.** After changing anything
   in `atom`, build it first (`dotnet build C:\Dev\Src\atom\Atom.slnx`) or the app compiles against
   stale DLLs.
-- **A running app locks those DLLs.** An Aspire AppHost or a `dotnet run` on the WebApi holds
+- **A running app locks those DLLs.** A WebApi started from VS Code or with `dotnet run` holds
   `<Solution>.WebApi\bin\`, and the next build fails with MSB3021 / MSB3027. Stop the app first.
 - **`AtomPackageVersion` and `.config/dotnet-tools.json` must agree.** If they drift, the package
   folder does not exist, both imports silently no-op, central package management stays off, and
-  restore fails with a misleading **NU1015 on the AppHost**. The `EnsureAtomBuildAssets` target exists
-  to catch exactly this and says what to fix — report its message rather than chasing NU1015.
+  restore fails with a misleading **NU1015** (a package reference without a version). The
+  `EnsureAtomBuildAssets` target exists to catch exactly this and says what to fix — report its message
+  rather than chasing NU1015.
 
 ## Project wiring
 

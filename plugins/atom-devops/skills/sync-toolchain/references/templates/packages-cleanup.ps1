@@ -3,8 +3,7 @@ param(
     [string]$Owner = "hwndmaster",
     [string[]]$Packages = @(
         "{{ServicePrefix}}-web",
-        "{{ServicePrefix}}-api",
-        "{{ServicePrefix}}-apphost"
+        "{{ServicePrefix}}-api"
     ),
     [switch]$DryRun
 )
@@ -151,7 +150,8 @@ foreach ($Package in $Packages) {
     $versions = $null
 
     try {
-        $versions = Get-PackageVersions -Owner $Owner -Package $Package
+        # @() keeps a single version from collapsing to a scalar: under strict mode Windows PowerShell 5.1 has no .Count on scalars.
+        $versions = @(Get-PackageVersions -Owner $Owner -Package $Package)
     }
     catch {
         Write-Host ("ERROR: Failed to fetch versions for {0}: {1}" -f $Package, $_.Exception.Message)

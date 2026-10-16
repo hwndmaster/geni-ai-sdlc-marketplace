@@ -1,32 +1,31 @@
 <#
 .SYNOPSIS
-    Updates the deployed {{SolutionName}} stack to the current images.
+    Updates {{SolutionName}} under the app host. The first run installs it.
 
 .DESCRIPTION
-    Wraps the four steps an update needs, in the order they have to happen:
+    Five steps, in the order they have to happen:
 
-      1. Pull the images from the host. The app host cannot do this itself: DCP runs the docker CLI
-         inside a container, and registry credentials are client-side (~/.docker/config.json, often
-         behind a credential helper), so a pull from in there is anonymous and a private registry
-         answers "error from registry: unauthorized".
+      1. Pull {{SolutionName}}'s images, on this server. The app host cannot do this itself: registry
+         credentials are client-side, so a pull from inside its container is anonymous and a private
+         registry answers "unauthorized".
 
-      2. Stop the app host. It has to be down for step 3: DCP does not reconcile a container that
-         disappears underneath it, so removing them while it runs simply leaves the app off until the
-         app host is restarted anyway.
+      2. Stop the app host. The other applications keep running: their containers are persistent and do
+         not depend on it.
 
-      3. Remove the api and web containers. They are ContainerLifetime.Persistent, which means DCP
-         adopts them as they are on start-up and never re-examines the image. Skipping this leaves the
-         previous build running while the dashboard reports everything healthy — the update silently
-         does nothing. Removing them is the only thing that forces a recreate.
+      3. Remove {{ServicePrefix}}-api and {{ServicePrefix}}-web. On start-up the app host attaches to any
+         container it finds without checking which image it runs, so removing them is the only way to get
+         the new images in.
 
-      4. Start the app host, which recreates both containers from the images pulled in step 1.
+      4. Start the app host. It reads app.json and .env again and creates the two containers.
 
-.PARAMETER EnvFile
-    Env file passed to docker compose. Defaults to .env next to this script.
+      5. Wait until both run.
+
+    Every application's update.ps1, and the app host's own, take one machine-wide lock first, so two updates
+    never stop the app host under each other.
 
 .PARAMETER SkipPull
-    Skip the pull and recreate the containers from the images already on this machine. This is what you
-    want after building images locally, where pulling would replace your build with the published one.
+    Recreate the containers from the images already on this machine: after changing app.json or .env, or
+    after a local build, where pulling would replace it with the published one.
 
 .EXAMPLE
     .\update.ps1
@@ -36,12 +35,16 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$EnvFile = ".env",
-    [switch]$SkipPull
+    [switch]$SkipPull,
+    [int]$TimeoutSeconds = 180
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$LockName = "Global\AppHostUpdate"
+$AppHost = "app-host"
+$Containers = @("{{ServicePrefix}}-api", "{{ServicePrefix}}-web")
 
 function Invoke-Step {
     param(
@@ -63,10 +66,47 @@ function Invoke-Step {
     Write-Host "OK: $Name" -ForegroundColor Green
 }
 
+# Existence is checked rather than letting docker fail on a missing container. Its "No such container" goes
+# to stderr, and Windows PowerShell 5.1 turns native stderr piped through 2>&1 into a TERMINATING error under
+# $ErrorActionPreference = "Stop", while PowerShell 7 does not. Never redirect native stderr into the
+# pipeline in this script.
+function Test-Container {
+    param([Parameter(Mandatory = $true)] [string]$Name)
+
+    return [bool](docker ps --all --quiet --filter "name=^$Name$")
+}
+
+function Test-ContainerRunning {
+    param([Parameter(Mandatory = $true)] [string]$Name)
+
+    return (Test-Container $Name) -and ((docker inspect --format "{{.State.Running}}" $Name) -eq "true")
+}
+
 Push-Location $PSScriptRoot
+$lock = [System.Threading.Mutex]::new($false, $LockName)
+$lockTaken = $false
 try {
-    if (-not (Test-Path $EnvFile)) {
-        Write-Error "Env file '$EnvFile' not found. Copy .env.example to .env and fill it in."
+    if (-not (Test-Path ".env")) {
+        Write-Error ".env not found next to this script. Create it from the example and fill it in: Copy-Item .env.example .env"
+        exit 1
+    }
+
+    if (-not (Test-Container $AppHost)) {
+        Write-Error "No '$AppHost' container on this machine. Install the app host first: see its Deployment\README.md."
+        exit 1
+    }
+
+    Write-Host "Waiting for any other app host or application update to finish..." -ForegroundColor DarkGray
+    try {
+        $lockTaken = $lock.WaitOne([TimeSpan]::FromMinutes(10))
+    }
+    catch [System.Threading.AbandonedMutexException] {
+        # A previous update was killed while holding the lock. The lock is ours now.
+        $lockTaken = $true
+    }
+
+    if (-not $lockTaken) {
+        Write-Error "Another update has held the lock for 10 minutes. Check for a stuck update.ps1 window."
         exit 1
     }
 
@@ -74,48 +114,58 @@ try {
         Write-Host "Skipping the pull; using the images already on this machine." -ForegroundColor Yellow
     }
     else {
-        Invoke-Step "Pull images" {
-            # --profile pull reaches the api and web services, which exist in the compose file only so
-            # that they can be pulled from here; `up` never starts them.
-            docker compose --env-file $EnvFile --profile pull pull
+        Invoke-Step "Pull {{SolutionName}}'s images" {
+            docker compose --env-file .env --profile pull pull
         }
     }
 
     Invoke-Step "Stop the app host" {
-        # Must precede the removal: DCP only builds its resource model at start-up, so a container
-        # removed while it is running is not noticed and simply stays gone.
-        docker compose --env-file $EnvFile down
+        docker stop $AppHost | Out-Null
     }
 
-    Invoke-Step "Remove the managed containers so DCP recreates them" {
-        foreach ($containerName in @("{{ServicePrefix}}-api", "{{ServicePrefix}}-web")) {
-            # Existence is checked first rather than letting `docker rm` fail on a container that is not
-            # there. Its "No such container" goes to stderr, and Windows PowerShell 5.1 turns native
-            # stderr piped through 2>&1 into a TERMINATING error under $ErrorActionPreference = "Stop" —
-            # so on a first run the script died here, before it could start anything. PowerShell 7 does
-            # not do that, which is why it only breaks for some people. Never redirect native stderr
-            # into the pipeline in this script.
-            $existing = docker ps --all --quiet --filter "name=^$containerName$"
-            if (-not $existing) {
-                Write-Host "   $containerName is not present - nothing to remove" -ForegroundColor DarkGray
-                continue
+    Invoke-Step "Remove {{SolutionName}}'s containers" {
+        foreach ($name in $Containers) {
+            if (Test-Container $name) {
+                docker rm --force $name | Out-Null
+                Write-Host "   removed $name"
             }
-
-            docker rm --force $containerName | Out-Null
-            Write-Host "   removed $containerName"
+            else {
+                Write-Host "   $name is not present - nothing to remove" -ForegroundColor DarkGray
+            }
         }
     }
 
     Invoke-Step "Start the app host" {
-        docker compose --env-file $EnvFile up -d
+        docker start $AppHost | Out-Null
+    }
+
+    Invoke-Step "Wait for {{SolutionName}} to run" {
+        $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+        while (-not ((Test-ContainerRunning $Containers[0]) -and (Test-ContainerRunning $Containers[1]))) {
+            if (-not (Test-ContainerRunning $AppHost)) {
+                docker logs --tail 30 $AppHost
+                Write-Error "The app host stopped. Its last log lines are above."
+                exit 1
+            }
+
+            if ((Get-Date) -gt $deadline) {
+                Write-Error ("{{SolutionName}} did not start within $TimeoutSeconds seconds. The dashboard's Resources page " +
+                    "shows it with the reason, or does not show it at all when apps.json does not register it.")
+                exit 1
+            }
+
+            Start-Sleep -Seconds 2
+        }
     }
 
     Write-Host ""
-    Write-Host "Updated. The app host recreates the api and web containers; give it a few seconds." -ForegroundColor Green
-    Write-Host "  Dashboard: http://localhost:{{DashboardPort}}"
-    Write-Host "  SPA:       http://localhost:{{WebHostPort}}"
-    Write-Host "  API:       http://localhost:{{ApiHostPort}}"
+    Write-Host "{{SolutionName}} is updated and running." -ForegroundColor Green
 }
 finally {
+    if ($lockTaken) {
+        $lock.ReleaseMutex()
+    }
+
+    $lock.Dispose()
     Pop-Location
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "../app-host/app.schema.json",
+  "name": "{{ServicePrefix}}",
+  "displayName": "{{SolutionName}}",
+  "type": "atom-webapp",
+  "registry": "${{{EnvPrefix}}_REGISTRY:-ghcr.io/hwndmaster}",
+  "imageTag": "${{{EnvPrefix}}_IMAGE_TAG:-latest}",
+  "api": {
+    "containerPort": {{ApiContainerPort}},
+    "hostPort": "${{{EnvPrefix}}_API_PORT:-{{ApiHostPort}}}",
+    "memory": "${{{EnvPrefix}}_API_MEMORY_LIMIT:-384m}",
+    "volumes": [
+      { "host": "${{{EnvPrefix}}_DATA_PATH}", "container": "/app/Data" },
+      { "host": "${{{EnvPrefix}}_LOGS_PATH}", "container": "/app/Logs" }
+    ]
+  },
+  "web": {
+    "containerPort": {{WebContainerPort}},
+    "hostPort": "${{{EnvPrefix}}_WEB_PORT:-{{WebHostPort}}}",
+    "memory": "${{{EnvPrefix}}_WEB_MEMORY_LIMIT:-64m}"
+  }
+}
