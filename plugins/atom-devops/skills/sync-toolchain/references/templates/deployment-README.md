@@ -20,10 +20,10 @@ the data and logs folders sit inside it by default.
    Copy-Item .env.example .env   # and fill it in
    ```
    Create the data and logs folders it names.
-3. Register {{SolutionName}} in `C:\Docker\app-host\apps.json`. `path` is the folder inside the apps root,
-   `C:\Docker`:
+3. Register {{SolutionName}} in `C:\Docker\app-host\apps.json` by its folder inside the apps root,
+   `C:\Docker` (use whatever the folder is called):
    ```json
-   { "name": "{{ServicePrefix}}", "path": "{{SolutionName}}" }
+   { "path": "{{SolutionName}}" }
    ```
 4. Run `.\update.ps1`. The first run is the installation.
 
